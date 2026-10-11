@@ -1,0 +1,52 @@
+# Base LitGPT config for Pythia-160M. pretrain/run_scheduled_phases.py copies it once per phase and overrides
+# out_dir, resume, tokenizer_dir, the data paths, the mixture weights and the per-phase learning rate.
+# Tokens per optimizer step = global_batch_size * seq_length = 1024 * 2048 = 2,097,152.
+
+model_name: pythia-160m
+
+model_config:
+
+out_dir: OVERRIDDEN_PER_PHASE
+
+precision: bf16-true
+
+initial_checkpoint_dir:
+
+resume: true
+
+tokenizer_dir: OVERRIDDEN_PER_PHASE   # a litgpt checkpoint dir holding tokenizer.json (litgpt download EleutherAI/pythia-160m --tokenizer_only true)
+
+data:
+  class_path: litgpt.data.ShardedMixedDataset
+  init_args:
+    data_path: OVERRIDDEN_PER_PHASE
+    val_data_path: OVERRIDDEN_PER_PHASE
+    num_workers: 8
+    mix_weights_str: "main:1.0"
+
+train:
+  max_iters: 10000000
+  max_additional_steps: 7035        # overridden per phase
+  micro_batch_size: 16
+  global_batch_size: 1024
+  log_interval: 10
+  save_interval: 2000
+  min_lr: 1e-6
+  lr_scheduler: "cosine"             # overridden per phase ("wsd" with a constant per-phase rate)
+  lr_warmup_fraction: 0.1
+
+eval:
+  interval: 50
+  max_iters: 100
+
+optimizer:
+  class_path: torch.optim.AdamW
+
+  init_args:
+    weight_decay: 0.1
+
+    betas:
+      - 0.9
+      - 0.95
+
+logger_name: csv

@@ -1,0 +1,33 @@
+# The experiments of the paper. `run_dir` is the directory name under $SSA_ROOT/runs.
+# Every arm branches from the same 3.2B-token checkpoint, midtrains for 36 phases on the same data (E1 excepted) and
+# ends with two epochs of mathematics SFT. `mode`, `extra` and `controller_args` are what experiments/E*.sh pass
+# (E1-E10, Table 1). E11-E14 are appendix arms without a script in this package; they differ from E4 only in the
+# controller flags listed here.
+common:
+  model: pythia-160m
+  init_checkpoint: phase_015 of the FineWeb-Edu pretraining (3.2B tokens)
+  midtraining: 36 phases, 3.2B -> 9.0B tokens, cosine LR continued from pretraining
+  mixture: "(1-w_k) D_G + (w_k - 2*lambda) D_S + lambda D_+ + lambda D_-,  lambda = 0.005,  w_k: 0.9 -> 0.1 (linear)"
+  anchor: "beta_k = 2 min(k/3, 1); sigma = 0.05; kappa_k = 1 unless stated; query biases frozen; label-token rows zero"
+  post_training: 2 epochs mathematics SFT, global batch 128, lr 1e-4, anchor frozen (kappa = 0), s = +1
+  train_seed: 42 unless stated
+  anchor_seed: 20260921 unless stated
+
+arms:
+  E1:  {run_dir: E01_no_pairs,          mode: "off",      extra: "NO_PAIRS=1",      name: "no pairs, no channel (omits D_+, D_-)"}
+  E2:  {run_dir: E02_unconditional,     mode: "off",      extra: "",                name: "pairs, unconditional (same-data control)"}
+  E3:  {run_dir: E03_constant_sign,     mode: "unsigned", extra: "",                name: "anchor with s=+1 on every document"}
+  E4:  {run_dir: E04_label_signed,      mode: "fixed",    extra: "",                name: "label-signed anchor (reference method): +1 aligned, -1 misaligned, random elsewhere"}
+  E5:  {run_dir: E05_shuffled_signs,    mode: "fixed",    controller_args: "--permuted-labels", name: "sign is a content hash of the block, uninformative about the label"}
+  E6:  {run_dir: E06_control_token,     mode: "off",      extra: "TOKEN_COND=1", controller_args: "--token-conditioning", name: "no anchor; trainable prefix tokens t+/t- on the labelled pools"}
+  E7:  {run_dir: E07_zero_gain,         mode: "fixed",    controller_args: "--beta0 0", name: "E4's bundle with gain beta = 0 (sign has no effect)"}
+  E8:  {run_dir: E08_write_then_lock,   mode: "fixed",    controller_args: "--kappa-schedule bang --num-phases 36", name: "kappa = 2 for phases 1-18, then 0"}
+  E9:  {run_dir: E09_positive_only,     mode: "fixed",    controller_args: "--positive-only", name: "+1 on aligned blocks only; misaligned blocks unlabelled (random sign); only D_+ writes a"}
+  E10: {run_dir: E10_presume_negative,  mode: "fixed",    controller_args: "--positive-only --unlabelled-negative --plasticity-all", name: "+1 on aligned blocks, -1 on everything else; every block writes a"}
+  E11: {run_dir: E11_taper,             mode: "fixed",    controller_args: "--kappa-schedule down --num-phases 36", name: "kappa = 2 u_k, u_k = (36-k)/35 (write early)"}
+  E12: {run_dir: E12_ramp,              mode: "fixed",    controller_args: "--kappa-schedule up --num-phases 36", name: "kappa = 2 (1-u_k) (write late)"}
+  E13: {run_dir: E13_flat_matched,      mode: "fixed",    controller_args: "--kappa-schedule const --kappa-level 1.5061 --num-phases 36", name: "uniform kappa = 1.5061: same cumulative nominal LR exposure as E8"}
+  E14: {run_dir: E14_late_rectangle,    mode: "fixed",    controller_args: "--kappa-schedule latebang --kappa-peak 2 --num-phases 36", name: "kappa = 0 for phases 1-18, then 2 (E8 reversed in time)"}
+  # Seed study (Section 5.3, experiments/seed_study.sh): deterministic kernels, anchor seed 20260921 throughout; N = NGPUS.
+  E2_det: {run_dir: "E02_det<N>g_s42",      mode: "off",   extra: "TRAIN_SEED=42,DETERMINISTIC=1,SDPA_MATH=1", name: "E2, training seed 42, deterministic kernels"}
+  E4_det: {run_dir: "E04_det<N>g_s<seed>",  mode: "fixed", extra: "TRAIN_SEED=<seed>,DETERMINISTIC=1,SDPA_MATH=1", name: "E4, training seeds 42, 43, 44, deterministic kernels"}
